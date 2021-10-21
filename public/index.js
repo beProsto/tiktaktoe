@@ -74,12 +74,7 @@ function emptyAcceptBodyText() {
 const gridBody = document.getElementById("gridBody");
 
 function putGridElement(x, y) {
-  if(window.innerWidth >= 480) {
-    gridBody.innerHTML += `<button class="gridElementsNormal" id="gridElement[${x},${y}]" onclick="gridElementHandle(${x}, ${y})"> = </button>`;
-  }
-  else {
-    gridBody.innerHTML += `<button class="gridElementsSmall" id="gridElement[${x},${y}]" onclick="gridElementHandle(${x}, ${y})"> = </button>`;
-  }
+  gridBody.innerHTML += `<button class="gridElements" id="gridElement[${x},${y}]" onclick="gridElementHandle(${x}, ${y})"> = </button>`;
 }
 function putGridLineSeparator() {
   gridBody.innerHTML += `<br>`;

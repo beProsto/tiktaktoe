@@ -4,7 +4,7 @@
   margin: 0px;
   padding: 0px;
   line-height: 0px;
-  display: inline;
+  display: absolute;
 }
 
 #acceptBody {
@@ -20,27 +20,26 @@
   text-shadow: 2px 2px 5px black;
   text-align: center;
   display: inline-block;
+  line-height: 50px;
 }
 
 #acceptBody button {
   font-size: 100%;
 }
 
-.gridElementsNormal {
-  font-size: 32px;
-
-  width: 40px;
-  height: 40px;
-
-  margin: 1px;
-}
-.gridElementsSmall {
-  font-size: 28px;
-
-  width: calc(10% - 2px);
-  height: calc(50% / 10);
+.gridElements {
+  --height: calc(60vh / 10);
+  --width: calc(10vw - 4px);
+  --font--size: calc(min(var(--height), var(--width)) - 10px);
+  font-size: calc(var(--font--size));
+  width: calc(var(--width));
+  max-width: calc(var(--height));
+  height: calc(var(--height));
+  max-height: calc(var(--width));
 
   margin: 1px;
+
+  padding: 0px;
 }
 
 html {
@@ -50,5 +49,5 @@ html {
 body {
   text-align: center;
   background-image: linear-gradient(rgb(200, 200, 200), rgb(100, 100, 100));
-  min-height: 100%;
+  line-height: 20px;
 }
