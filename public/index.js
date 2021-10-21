@@ -74,7 +74,7 @@ function emptyAcceptBodyText() {
 const gridBody = document.getElementById("gridBody");
 
 function putGridElement(x, y) {
-  gridBody.innerHTML += ` <button class="gridElements" id="gridElement[${x},${y}]" onclick="gridElementHandle(${x}, ${y})"> = </button> `;
+  gridBody.innerHTML += `<button class="gridElements" id="gridElement[${x},${y}]" onclick="gridElementHandle(${x}, ${y})"> = </button>`;
 }
 function putGridLineSeparator() {
   gridBody.innerHTML += `<br>`;

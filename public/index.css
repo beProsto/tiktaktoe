@@ -1,5 +1,10 @@
 #gridBody {
-  line-height: 270%;
+  word-spacing: 0px;
+  letter-spacing: 0px;
+  margin: 0px;
+  padding: 0px;
+  line-height: 0px;
+  display: inline;
 }
 
 #acceptBody {
@@ -18,7 +23,6 @@
 }
 
 #acceptBody button {
-  line-height: 220%;
   font-size: 100%;
 }
 
@@ -27,6 +31,8 @@
 
   width: 40px;
   height: 40px;
+
+  margin: 1px;
 }
 
 html {
