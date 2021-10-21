@@ -26,11 +26,19 @@
   font-size: 100%;
 }
 
-.gridElements {
+.gridElementsNormal {
   font-size: 32px;
 
   width: 40px;
   height: 40px;
+
+  margin: 1px;
+}
+.gridElementsSmall {
+  font-size: 28px;
+
+  width: calc(10% - 2px);
+  height: calc(50% / 10);
 
   margin: 1px;
 }
