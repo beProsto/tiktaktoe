@@ -4,3 +4,7 @@
 Here's a screenshot of two players' points of view, from two separate browsers, of course. &nbsp; :D
 
 ![Screenshot](win.png)
+
+You can run this project on repl.it, [over here!](https://replit.com/@beProsto1/tiktaktoe)
+
+And after you run it, [come here](https://tiktaktoe.beprosto1.repl.co/) to actually play it! :D 
