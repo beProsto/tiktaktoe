@@ -128,7 +128,7 @@ func game(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
-	fmt.Println("Chat user connected from: ", c.RemoteAddr())
+	fmt.Println("User connected from: ", c.RemoteAddr())
 
 	var clientData ClientData
 	if XMissing {
