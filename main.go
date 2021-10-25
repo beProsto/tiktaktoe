@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-  "github.com/beProsto/tiktaktoe/randstr"
+  "github.com/beProsto/tiktaktoe/randstr" // this is by far the stupidest thing about this language, i hate this so much, 
 )
 
 var upgrader = websocket.Upgrader{
@@ -18,25 +18,39 @@ const BOARD_WIDTH = 10 // Width of the board
 const BOARD_HEIGHT = 10 // Height of the board
 const GAME_WIDTH = 5 // How many symbols does there have to be in a line for a player to win
 
-var Board [BOARD_WIDTH * BOARD_HEIGHT]byte
+func restart(board *[BOARD_WIDTH*BOARD_HEIGHT]byte) {
+// Send Data to all clients
+	GameClients.Range(func(key interface{}, value interface{}) bool {
+    err := value.(*websocket.Conn).WriteMessage(1, []byte("#RESET"))
+		if err != nil {
+			fmt.Println("write:", err)
+		}
 
-func getBoardElement(x int, y int) byte {
+		return true
+	})
+
+  // reset the board
+  for i := 0; i < BOARD_WIDTH * BOARD_HEIGHT; i++ {
+    board[i] = 0;
+  }
+}
+func getBoardElement(board *[BOARD_WIDTH*BOARD_HEIGHT]byte, x int, y int) byte {
   if(x >= 0 && y >= 0 && x < BOARD_WIDTH && y < BOARD_HEIGHT) {
-    return Board[y*BOARD_WIDTH + x]
+    return board[y*BOARD_WIDTH + x]
   } else {
     return 0
   }
 }
-func setBoardElement(x int, y int, v byte) bool {
+func setBoardElement(board *[BOARD_WIDTH*BOARD_HEIGHT]byte, x int, y int, v byte) bool {
   if(x >= 0 && y >= 0 && x < BOARD_WIDTH && y < BOARD_HEIGHT) {
-    Board[y*BOARD_WIDTH + x] = v
+    board[y*BOARD_WIDTH + x] = v
     return true
   } else {
     return false
   }
 }
 
-func processBoard() byte {
+func processBoard(board *[BOARD_WIDTH*BOARD_HEIGHT]byte) byte {
   for y := 0; y < BOARD_WIDTH; y++ {
     for x := 0; x < BOARD_WIDTH; x++ {
       var xAxisLineLastCheck bool = true
@@ -53,32 +67,32 @@ func processBoard() byte {
 
       for r := 0; r < GAME_WIDTH; r++ {
         if(r == 0) {
-          xAxisLineLastSymbol = getBoardElement(x, y)
+          xAxisLineLastSymbol = getBoardElement(board, x, y)
           yAxisLineLastSymbol = xAxisLineLastSymbol
           xYAxisLineLastSymbol = xAxisLineLastSymbol
           invXYAxisLineLastSymbol = xAxisLineLastSymbol
         }
 
-        xAxisLineLastCheck = (getBoardElement(x+r, y) == xAxisLineLastSymbol) && xAxisLineLastCheck
-        xAxisLineLastSymbol = getBoardElement(x+r, y)
+        xAxisLineLastCheck = (getBoardElement(board, x+r, y) == xAxisLineLastSymbol) && xAxisLineLastCheck
+        xAxisLineLastSymbol = getBoardElement(board, x+r, y)
 
-        yAxisLineLastCheck = (getBoardElement(x, y+r) == yAxisLineLastSymbol) && yAxisLineLastCheck
-        yAxisLineLastSymbol = getBoardElement(x, y+r)
+        yAxisLineLastCheck = (getBoardElement(board, x, y+r) == yAxisLineLastSymbol) && yAxisLineLastCheck
+        yAxisLineLastSymbol = getBoardElement(board, x, y+r)
 
-        xYAxisLineLastCheck = (getBoardElement(x+r, y+r) == xYAxisLineLastSymbol) && xYAxisLineLastCheck
-        xYAxisLineLastSymbol = getBoardElement(x+r, y+r)
+        xYAxisLineLastCheck = (getBoardElement(board, x+r, y+r) == xYAxisLineLastSymbol) && xYAxisLineLastCheck
+        xYAxisLineLastSymbol = getBoardElement(board, x+r, y+r)
 
-        invXYAxisLineLastCheck = (getBoardElement(x-r, y+r) == invXYAxisLineLastSymbol) && invXYAxisLineLastCheck
-        invXYAxisLineLastSymbol = getBoardElement(x-r, y+r)
+        invXYAxisLineLastCheck = (getBoardElement(board, x-r, y+r) == invXYAxisLineLastSymbol) && invXYAxisLineLastCheck
+        invXYAxisLineLastSymbol = getBoardElement(board, x-r, y+r)
 
         if(r == GAME_WIDTH - 1) {
-          if((getBoardElement(x+r, y) == xAxisLineLastSymbol) && xAxisLineLastCheck && xAxisLineLastSymbol != 0) {
+          if((getBoardElement(board, x+r, y) == xAxisLineLastSymbol) && xAxisLineLastCheck && xAxisLineLastSymbol != 0) {
             return xAxisLineLastSymbol
-          } else if((getBoardElement(x, y+r) == yAxisLineLastSymbol) && yAxisLineLastCheck && yAxisLineLastSymbol != 0) {
+          } else if((getBoardElement(board, x, y+r) == yAxisLineLastSymbol) && yAxisLineLastCheck && yAxisLineLastSymbol != 0) {
             return yAxisLineLastSymbol
-          } else if((getBoardElement(x+r, y+r) == xYAxisLineLastSymbol) && xYAxisLineLastCheck && xYAxisLineLastSymbol != 0) {
+          } else if((getBoardElement(board, x+r, y+r) == xYAxisLineLastSymbol) && xYAxisLineLastCheck && xYAxisLineLastSymbol != 0) {
             return xYAxisLineLastSymbol
-          } else if((getBoardElement(x-r, y+r) == invXYAxisLineLastSymbol) && invXYAxisLineLastCheck && invXYAxisLineLastSymbol != 0) {
+          } else if((getBoardElement(board, x-r, y+r) == invXYAxisLineLastSymbol) && invXYAxisLineLastCheck && invXYAxisLineLastSymbol != 0) {
             return invXYAxisLineLastSymbol
           }
         }
@@ -91,34 +105,64 @@ func processBoard() byte {
 
 type ClientData struct {
 	symbol byte
+  roomId string
 }
 
-var XMissing bool = true
-var OMissing bool = true
+type RoomData struct {
+  XMissing bool
+  OMissing bool
+  SymbolsTurn byte
+  XAcceptedEnd bool
+  OAcceptedEnd bool
+  RoundEnded   bool
+  Board [BOARD_WIDTH * BOARD_HEIGHT]byte
+}
+func newRoomData() RoomData {
+  return RoomData{
+    XMissing: true,
+    OMissing: true,
+    SymbolsTurn: 'X',
+    XAcceptedEnd: false,
+    OAcceptedEnd: false,
+  };
+}
 
+var Rooms sync.Map
 var GameClients sync.Map
 var GameClientData sync.Map
 
-var SymbolsTurn byte = 'X'
+func makeNewRoom(c *websocket.Conn) string {
+  roomId := randstr.StringWithCharset(6, "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789")
+  _, loaded := Rooms.Load(roomId)
+  if !loaded {
+    err := c.WriteMessage(1, []byte("+" + roomId))
+    if err != nil {
+      fmt.Println("write:", err)
+    }
+    Rooms.Store(roomId, &newRoomData())
+    return roomId;
+  } else {
+    return makeNewRoom(c)
+  }
+}
 
-var XAcceptedEnd bool = false
-var OAcceptedEnd bool = false
-var RoundEnded   bool = false
+func connectPlayerToRoom(c *websocket.Conn, cd *ClientData, roomId string) {
+  room, exists := Rooms.Load(roomId)
+  if exists {
+    // here we need client connection code
+    cd.roomId = roomId
+    // here we send the client info for them to start the game
+    err := c.WriteMessage(1, []byte("#START"))
+    if err != nil {
+      fmt.Println("write:", err)
+    }
+    room.
 
-func restart() {
-// Send Data to all clients
-	GameClients.Range(func(key interface{}, value interface{}) bool {
-    err := value.(*websocket.Conn).WriteMessage(1, []byte("#RESET"))
-		if err != nil {
-			fmt.Println("write:", err)
-		}
-
-		return true
-	})
-
-  // reset the board
-  for i := 0; i < BOARD_WIDTH * BOARD_HEIGHT; i++ {
-    Board[i] = 0;
+  } else {
+    err := c.WriteMessage(1, []byte("#WRONG"))
+    if err != nil {
+      fmt.Println("write:", err)
+    }
   }
 }
 
@@ -131,33 +175,34 @@ func game(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 	fmt.Println("User connected from: ", c.RemoteAddr())
 
-	var clientData ClientData
-	if XMissing {
-		clientData.symbol = 'X'
-		XMissing = false
-	} else if OMissing {
-		clientData.symbol = 'O'
-		OMissing = false
-	} else {
-		clientData.symbol = '-'
-	}
-	c.WriteMessage(1, []byte{'&', clientData.symbol})
-	GameClientData.Store(c.RemoteAddr(), clientData)
-
-	GameClients.Store(c.RemoteAddr(), c)
+  var roomId string
+	var clientData *ClientData = &ClientData{}
+	// if XMissing {
+	// 	clientData.symbol = 'X'
+	// 	XMissing = false
+	// } else if OMissing {
+	// 	clientData.symbol = 'O'
+	// 	OMissing = false
+	// } else {
+	// 	clientData.symbol = '-'
+	// }
+	// c.WriteMessage(1, []byte{'&', clientData.symbol})
 
   // Send the current board's state to the player
-  for i := 0; i < BOARD_WIDTH * BOARD_HEIGHT; i++ {
-    x := i%BOARD_WIDTH;
-    y := i/BOARD_HEIGHT;
-    if(getBoardElement(x, y) != 0) {
-      stringToSend := "^" + strconv.Itoa(x) + ":" + strconv.Itoa(y) + ":" + string([]byte{getBoardElement(x, y)})
-      err = c.WriteMessage(1, []byte(stringToSend))
-		  if err != nil {
-				fmt.Println("write:", err)
-			}
-    }
-  }
+  // for i := 0; i < BOARD_WIDTH * BOARD_HEIGHT; i++ {
+  //   x := i%BOARD_WIDTH;
+  //   y := i/BOARD_HEIGHT;
+  //   if(getBoardElement(x, y) != 0) {
+  //     stringToSend := "^" + strconv.Itoa(x) + ":" + strconv.Itoa(y) + ":" + string([]byte{getBoardElement(x, y)})
+  //     err = c.WriteMessage(1, []byte(stringToSend))
+	// 	  if err != nil {
+	// 			fmt.Println("write:", err)
+	// 		}
+  //   }
+  // }
+
+	GameClientData.Store(c.RemoteAddr(), clientData)
+	GameClients.Store(c.RemoteAddr(), c)
 
 	for {
 		_, message, err2 := c.ReadMessage() //ReadMessage blocks until message received
@@ -165,33 +210,44 @@ func game(w http.ResponseWriter, r *http.Request) {
 
 		if err2 != nil {
 			fmt.Println("read:", err2)
-			if clientData.symbol == 'X' {
-				XMissing = true
-        if(RoundEnded) {
-          XAcceptedEnd = true
-        }
-			} else if clientData.symbol == 'O' {
-				OMissing = true
-        if(RoundEnded) {
-          OAcceptedEnd = true
-        }
-			}
-      GameClientData.Delete(c.RemoteAddr())
-			GameClients.Delete(c.RemoteAddr())
 
-      if(XAcceptedEnd && OAcceptedEnd) {
-        XAcceptedEnd = false
-        OAcceptedEnd = false
-        RoundEnded = false
-        restart()
-      }
+			// if clientData.symbol == 'X' {
+			// 	XMissing = true
+      //   if(RoundEnded) {
+      //     XAcceptedEnd = true
+      //   }
+			// } else if clientData.symbol == 'O' {
+			// 	OMissing = true
+      //   if(RoundEnded) {
+      //     OAcceptedEnd = true
+      //   }
+			// }
+      // GameClientData.Delete(c.RemoteAddr())
+			// GameClients.Delete(c.RemoteAddr())
+
+      // if(XAcceptedEnd && OAcceptedEnd) {
+      //   XAcceptedEnd = false 
+      //   OAcceptedEnd = false
+      //   RoundEnded = false
+      //   restart()
+      // }
 
 			return
 		}
 
 		fmt.Println(msgString)
 
-		if msgString != "" && !RoundEnded {
+    if msgString == "+" { // When a player wants to create a room
+      roomId = makeNewRoom(c)
+
+      // here we need client connection code
+      clientData.roomId = roomId 
+    } else if msgString[0] == '%' { // When a player wants to connect to a room
+      roomIdWanted := msgString[1:]
+      println(roomIdWanted)
+
+
+    } else if msgString != "" && !RoundEnded {
 			if msgString[0] == '^' {
 				data, ok := GameClientData.Load(c.RemoteAddr())
 				msgData := msgString[1:]
@@ -273,12 +329,12 @@ func game(w http.ResponseWriter, r *http.Request) {
 						}
 					} else { // If it's not the player's turn, tell them about it.
 						if data.(ClientData).symbol != '-' {
-							c.WriteMessage(1, []byte("!Wait for your turn!"))
+							err = c.WriteMessage(1, []byte("!Wait for your turn!"))
 							if err != nil {
 								fmt.Println("write:", err)
 							}
 						} else {
-							c.WriteMessage(1, []byte("!You're not a player!"))
+							err = c.WriteMessage(1, []byte("!You're not a player!"))
 							if err != nil {
 								fmt.Println("write:", err)
 							}

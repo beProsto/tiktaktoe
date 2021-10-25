@@ -54,12 +54,17 @@ const idInput = document.getElementById("idInput");
 
 const connectButton = document.getElementById("connectButton");
 
+const createButton = document.getElementById("createButton");
+
 connectButton.onclick = () => {
-  if(idInput.text.length == 6) {
-    ws.send("%" + idInput.text);
+  if(idInput.value.length == 6) {
+    ws.send("%" + idInput.value);
   }
 };
 
+createButton.onclick = () => {
+  ws.send("+");
+};
 
 // Interpreting the messages from the server
 ws.onmessage = (msg) => {
@@ -122,8 +127,12 @@ ws.onmessage = (msg) => {
     }
     else if(message == "WRONG") {
       alert("Game ID Invalid!");
-      idInput.text = "";
+      idInput.value = "";
     }
+  }
+  else if(text[0] == "+") {
+    const id = text.substring(1, text.length);
+    alert(id);
   }
 };
 

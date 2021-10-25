@@ -1,2 +1,5 @@
+github.com/beProsto/tiktaktoe v0.0.0-20211023172647-8ebca7cc5bce h1:HiVCi+7o5XgdUXj+EERFmnr6KsMl7O83oIE6JkbFN14=
+github.com/beProsto/tiktaktoe/randstr v0.0.0-20211023173256-010bf0bb47be h1:sKXf0+Ga309zY5oVQp4tde+KuyPCJaN14EfnsjNDiVo=
+github.com/beProsto/tiktaktoe/randstr v0.0.0-20211023173256-010bf0bb47be/go.mod h1:dorJtMOcqVgYZdEqOs+XuvBz3lwUXJfCOiEk6ZBXFEk=
 github.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=
 github.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
