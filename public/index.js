@@ -126,7 +126,7 @@ ws.onmessage = (msg) => {
       generateGrid(10,10);
     }
     else if(message == "WRONG") {
-      alert("Game ID Invalid!");
+      alert("Room ID Invalid!");
       idInput.value = "";
     }
   }

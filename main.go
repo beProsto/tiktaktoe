@@ -18,14 +18,16 @@ const BOARD_WIDTH = 10 // Width of the board
 const BOARD_HEIGHT = 10 // Height of the board
 const GAME_WIDTH = 5 // How many symbols does there have to be in a line for a player to win
 
-func restart(board *[BOARD_WIDTH*BOARD_HEIGHT]byte) {
+func restart(board *[BOARD_WIDTH*BOARD_HEIGHT]byte, roomId string) {
 // Send Data to all clients
 	GameClients.Range(func(key interface{}, value interface{}) bool {
-    err := value.(*websocket.Conn).WriteMessage(1, []byte("#RESET"))
-		if err != nil {
-			fmt.Println("write:", err)
-		}
-
+    clientsData, ok := GameClientData.Load(key)
+    if ok && clientsData.(*ClientData).roomId == roomId {
+      err := value.(*websocket.Conn).WriteMessage(1, []byte("#RESET"))
+      if err != nil {
+        fmt.Println("write:", err)
+      }
+    }
 		return true
 	})
 
@@ -108,6 +110,7 @@ type ClientData struct {
   roomId string
 }
 
+
 type RoomData struct {
   XMissing bool
   OMissing bool
@@ -117,13 +120,14 @@ type RoomData struct {
   RoundEnded   bool
   Board [BOARD_WIDTH * BOARD_HEIGHT]byte
 }
-func newRoomData() RoomData {
-  return RoomData{
+func newRoomData() *RoomData {
+  return &RoomData{
     XMissing: true,
     OMissing: true,
     SymbolsTurn: 'X',
     XAcceptedEnd: false,
     OAcceptedEnd: false,
+    Board: [BOARD_WIDTH*BOARD_HEIGHT]byte{},
   };
 }
 
@@ -139,7 +143,7 @@ func makeNewRoom(c *websocket.Conn) string {
     if err != nil {
       fmt.Println("write:", err)
     }
-    Rooms.Store(roomId, &newRoomData())
+    Rooms.Store(roomId, newRoomData())
     return roomId;
   } else {
     return makeNewRoom(c)
@@ -156,7 +160,30 @@ func connectPlayerToRoom(c *websocket.Conn, cd *ClientData, roomId string) {
     if err != nil {
       fmt.Println("write:", err)
     }
-    room.
+    // find out if one of the players is needed, if so, assign them to the player
+    if room.(*RoomData).XMissing {
+    	cd.symbol = 'X'
+    	room.(*RoomData).XMissing = false
+    } else if room.(*RoomData).OMissing {
+    	cd.symbol = 'O'
+    	room.(*RoomData).OMissing = false
+    } else {
+    	cd.symbol = '-'
+    }
+    c.WriteMessage(1, []byte{'&', cd.symbol})
+
+    // Send the current board's state to the player
+    for i := 0; i < BOARD_WIDTH * BOARD_HEIGHT; i++ {
+      x := i%BOARD_WIDTH;
+      y := i/BOARD_HEIGHT;
+      if(getBoardElement(&room.(*RoomData).Board, x, y) != 0) {
+        stringToSend := "^" + strconv.Itoa(x) + ":" + strconv.Itoa(y) + ":" + string([]byte{getBoardElement(&room.(*RoomData).Board, x, y)})
+        err = c.WriteMessage(1, []byte(stringToSend))
+    	  if err != nil {
+    			fmt.Println("write:", err)
+    		}
+      }
+    }
 
   } else {
     err := c.WriteMessage(1, []byte("#WRONG"))
@@ -177,29 +204,6 @@ func game(w http.ResponseWriter, r *http.Request) {
 
   var roomId string
 	var clientData *ClientData = &ClientData{}
-	// if XMissing {
-	// 	clientData.symbol = 'X'
-	// 	XMissing = false
-	// } else if OMissing {
-	// 	clientData.symbol = 'O'
-	// 	OMissing = false
-	// } else {
-	// 	clientData.symbol = '-'
-	// }
-	// c.WriteMessage(1, []byte{'&', clientData.symbol})
-
-  // Send the current board's state to the player
-  // for i := 0; i < BOARD_WIDTH * BOARD_HEIGHT; i++ {
-  //   x := i%BOARD_WIDTH;
-  //   y := i/BOARD_HEIGHT;
-  //   if(getBoardElement(x, y) != 0) {
-  //     stringToSend := "^" + strconv.Itoa(x) + ":" + strconv.Itoa(y) + ":" + string([]byte{getBoardElement(x, y)})
-  //     err = c.WriteMessage(1, []byte(stringToSend))
-	// 	  if err != nil {
-	// 			fmt.Println("write:", err)
-	// 		}
-  //   }
-  // }
 
 	GameClientData.Store(c.RemoteAddr(), clientData)
 	GameClients.Store(c.RemoteAddr(), c)
@@ -208,29 +212,35 @@ func game(w http.ResponseWriter, r *http.Request) {
 		_, message, err2 := c.ReadMessage() //ReadMessage blocks until message received
 		msgString := string(message)
 
-		if err2 != nil {
+		if err2 != nil { // the client disconnected
 			fmt.Println("read:", err2)
 
-			// if clientData.symbol == 'X' {
-			// 	XMissing = true
-      //   if(RoundEnded) {
-      //     XAcceptedEnd = true
-      //   }
-			// } else if clientData.symbol == 'O' {
-			// 	OMissing = true
-      //   if(RoundEnded) {
-      //     OAcceptedEnd = true
-      //   }
-			// }
-      // GameClientData.Delete(c.RemoteAddr())
-			// GameClients.Delete(c.RemoteAddr())
+      room, ok := Rooms.Load(roomId)
+      if ok {
+        roomPtr := room.(*RoomData)
+        // the player symbol that the client was has to be set as missing
+        if clientData.symbol == 'X' {
+          roomPtr.XMissing = true
+          if(roomPtr.RoundEnded) {
+            roomPtr.XAcceptedEnd = true
+          }
+        } else if clientData.symbol == 'O' {
+          roomPtr.OMissing = true
+          if(roomPtr.RoundEnded) {
+            roomPtr.OAcceptedEnd = true
+          }
+        }
+        // delete the client from client's list
+        GameClientData.Delete(c.RemoteAddr())
+        GameClients.Delete(c.RemoteAddr())
 
-      // if(XAcceptedEnd && OAcceptedEnd) {
-      //   XAcceptedEnd = false 
-      //   OAcceptedEnd = false
-      //   RoundEnded = false
-      //   restart()
-      // }
+        if(roomPtr.XAcceptedEnd && roomPtr.OAcceptedEnd) {
+          roomPtr.XAcceptedEnd = false 
+          roomPtr.OAcceptedEnd = false
+          roomPtr.RoundEnded = false
+          restart(&roomPtr.Board, roomId)
+        }
+      }
 
 			return
 		}
@@ -241,123 +251,138 @@ func game(w http.ResponseWriter, r *http.Request) {
       roomId = makeNewRoom(c)
 
       // here we need client connection code
-      clientData.roomId = roomId 
+      connectPlayerToRoom(c, clientData, roomId)
+      
     } else if msgString[0] == '%' { // When a player wants to connect to a room
       roomIdWanted := msgString[1:]
-      println(roomIdWanted)
+      fmt.Println(roomIdWanted)
+      if(len(roomIdWanted) == 6) {
+        roomId = roomIdWanted
+        // here we need client connection code
+        connectPlayerToRoom(c, clientData, roomId)
+      } else {
+        fmt.Println("USER GAVE INVALID ROOM ID: ", c.RemoteAddr(), " ID: ", roomIdWanted)
+      }
 
+    } else if(len(roomId) == 6) {
+      room, ok := Rooms.Load(roomId)
+      if ok {
+        roomPtr := room.(*RoomData)
 
-    } else if msgString != "" && !RoundEnded {
-			if msgString[0] == '^' {
-				data, ok := GameClientData.Load(c.RemoteAddr())
-				msgData := msgString[1:]
-				if msgData != "" && ok {
-					if data.(ClientData).symbol == SymbolsTurn { // If it is the player's move, change the player and send the change to all the players.
-						placement := strings.Split(msgData, ":")
-						if len(placement) >= 2 {
-							xPlacement, err1 := strconv.ParseUint(placement[0], 10, 8)
-							yPlacement, err2 := strconv.ParseUint(placement[1], 10, 8)
-							if err1 != nil || err2 != nil || xPlacement >= BOARD_WIDTH || xPlacement < 0 || yPlacement >= BOARD_HEIGHT || yPlacement < 0 {
-								fmt.Println("Error accured upon parsing the client input!")
-                if xPlacement > BOARD_WIDTH || xPlacement < 0 || yPlacement > BOARD_HEIGHT || yPlacement < 0 {
-									fmt.Println("Error had to do with the placement being out of bounds")
-								}
+        if msgString[0] == '^' && !roomPtr.RoundEnded {
+          data, ok := GameClientData.Load(c.RemoteAddr())
+          msgData := msgString[1:]
+          if msgData != "" && ok {
+            if data.(*ClientData).symbol == roomPtr.SymbolsTurn { // If it is the player's move, change the player and send the change to all the players.
+              placement := strings.Split(msgData, ":")
+              if len(placement) >= 2 {
+                xPlacement, err1 := strconv.ParseUint(placement[0], 10, 8)
+                yPlacement, err2 := strconv.ParseUint(placement[1], 10, 8)
+                if err1 != nil || err2 != nil || xPlacement >= BOARD_WIDTH || xPlacement < 0 || yPlacement >= BOARD_HEIGHT || yPlacement < 0 {
+                  fmt.Println("Error accured upon parsing the client input!")
+                  if xPlacement > BOARD_WIDTH || xPlacement < 0 || yPlacement > BOARD_HEIGHT || yPlacement < 0 {
+                    fmt.Println("Error had to do with the placement being out of bounds")
+                  }
 
-							} else if(getBoardElement(int(xPlacement), int(yPlacement)) == 0) {
-                // Toggle the symbol between X and O
-                if SymbolsTurn == 'X' {
-                  SymbolsTurn = 'O'
-                } else {
-                  SymbolsTurn = 'X'
-                }
-                
-								fmt.Println("X: ", xPlacement, ", Y: ", yPlacement)
+                } else if(getBoardElement(&roomPtr.Board, int(xPlacement), int(yPlacement)) == 0) {
+                  // Toggle the symbol between X and O
+                  if roomPtr.SymbolsTurn == 'X' {
+                    roomPtr.SymbolsTurn = 'O'
+                  } else {
+                    roomPtr.SymbolsTurn = 'X'
+                  }
+                  
+                  fmt.Println("X: ", xPlacement, ", Y: ", yPlacement)
 
-								playerSymbol := string([]byte{data.(ClientData).symbol})
-								fmt.Println("Symbol: ", playerSymbol)
+                  playerSymbol := string([]byte{data.(*ClientData).symbol})
+                  fmt.Println("Symbol: ", playerSymbol)
 
-								stringToSend := "^" + placement[0] + ":" + placement[1] + ":" + playerSymbol
-								fmt.Println("Final string: ", stringToSend)
+                  stringToSend := "^" + placement[0] + ":" + placement[1] + ":" + playerSymbol
+                  fmt.Println("Final string: ", stringToSend)
 
-                setBoardElement(int(xPlacement), int(yPlacement), data.(ClientData).symbol)
-                fmt.Println(Board)
+                  setBoardElement(&roomPtr.Board, int(xPlacement), int(yPlacement), data.(*ClientData).symbol)
+                  fmt.Println(roomPtr.Board)
 
-                playerThatWon := processBoard()
-                if(playerThatWon != 0) {
-                  RoundEnded = true;
-                }
-
-								// Send Data to all clients
-								GameClients.Range(func(key interface{}, value interface{}) bool {
-									// if value.(*websocket.Conn) == nil {
-									// 	GameClients.Delete(key)
-									// 	return true
-									// }
-
-									err = value.(*websocket.Conn).WriteMessage(1, []byte(stringToSend))
-									if err != nil {
-										fmt.Println("write:", err)
-									}
-
-									clientsData, ok := GameClientData.Load(key)
-									if ok {
-										if clientsData.(ClientData).symbol == SymbolsTurn {
-											err = value.(*websocket.Conn).WriteMessage(1, []byte("@Your Turn."))
-											if err != nil {
-												fmt.Println("write:", err)
-											}
-										}
-									}
-
+                  playerThatWon := processBoard(&roomPtr.Board)
                   if(playerThatWon != 0) {
-                    err = value.(*websocket.Conn).WriteMessage(1, []byte("!PLAYER " + string([]byte{playerThatWon}) + " WON!"))
-										if err != nil {
-											fmt.Println("write:", err)
-										}
+                    roomPtr.RoundEnded = true;
+                  }
+
+                  // Send Data to all clients
+                  GameClients.Range(func(key interface{}, value interface{}) bool {
+                    // if value.(*websocket.Conn) == nil {
+                    // 	GameClients.Delete(key)
+                    // 	return true
+                    // }
                     clientsData, ok := GameClientData.Load(key)
-                    if(ok && clientsData.(ClientData).symbol != '-') {
-                      err = value.(*websocket.Conn).WriteMessage(1, []byte("#REQUEST_RESET_ACCEPT"))
+                    if ok && clientsData.(*ClientData).roomId == roomId {
+                      err = value.(*websocket.Conn).WriteMessage(1, []byte(stringToSend))
                       if err != nil {
                         fmt.Println("write:", err)
                       }
+
+                      if clientsData.(*ClientData).symbol == roomPtr.SymbolsTurn {
+                        err = value.(*websocket.Conn).WriteMessage(1, []byte("@Your Turn."))
+                        if err != nil {
+                          fmt.Println("write:", err)
+                        }
+                      }
+
+                      if(playerThatWon != 0) {
+                        err = value.(*websocket.Conn).WriteMessage(1, []byte("!PLAYER " + string([]byte{playerThatWon}) + " WON!"))
+                        if err != nil {
+                          fmt.Println("write:", err)
+                        }
+                        clientsData, ok := GameClientData.Load(key)
+                        if(ok && clientsData.(*ClientData).symbol != '-') {
+                          err = value.(*websocket.Conn).WriteMessage(1, []byte("#REQUEST_RESET_ACCEPT"))
+                          if err != nil {
+                            fmt.Println("write:", err)
+                          }
+                        }
+                      }
                     }
-                  }
 
-									return true
-								})
-							}
-						}
-					} else { // If it's not the player's turn, tell them about it.
-						if data.(ClientData).symbol != '-' {
-							err = c.WriteMessage(1, []byte("!Wait for your turn!"))
-							if err != nil {
-								fmt.Println("write:", err)
-							}
-						} else {
-							err = c.WriteMessage(1, []byte("!You're not a player!"))
-							if err != nil {
-								fmt.Println("write:", err)
-							}
-						}
-					}
-				} else {
-					fmt.Println("Error accured upon loading client data!")
-				}
-			}
-		} else if RoundEnded && msgString == "#READY" && clientData.symbol != '-' {
-      if(clientData.symbol == 'X') {
-        XAcceptedEnd = true
-      } else if(clientData.symbol == 'O') {
-        OAcceptedEnd = true
+                    return true
+                  })
+                }
+              }
+            } else { // If it's not the player's turn, tell them about it.
+              if data.(*ClientData).symbol != '-' {
+                err = c.WriteMessage(1, []byte("!Wait for your turn!"))
+                if err != nil {
+                  fmt.Println("write:", err)
+                }
+              } else {
+                err = c.WriteMessage(1, []byte("!You're not a player!"))
+                if err != nil {
+                  fmt.Println("write:", err)
+                }
+              }
+            }
+          } else {
+            fmt.Println("Error accured upon loading client data!")
+          }
+        } else if roomPtr.RoundEnded && msgString == "#READY" && clientData.symbol != '-' {
+          if(clientData.symbol == 'X') {
+            roomPtr.XAcceptedEnd = true
+          } else if(clientData.symbol == 'O') {
+            roomPtr.OAcceptedEnd = true
+          }
+
+          if(roomPtr.XAcceptedEnd && roomPtr.OAcceptedEnd) {
+            roomPtr.XAcceptedEnd = false
+            roomPtr.OAcceptedEnd = false
+            roomPtr.RoundEnded = false
+            restart(&roomPtr.Board, roomId)
+          }
+        }
+
+      } else {
+        fmt.Println("ROOM COULDN'T BE LOADED FOR THE PLAYER: ", c.RemoteAddr(), " ROOM ID: ", roomId)
       }
 
-      if(XAcceptedEnd && OAcceptedEnd) {
-        XAcceptedEnd = false
-        OAcceptedEnd = false
-        RoundEnded = false
-        restart()
-      }
-    }
+		}
 	}
 }
 
