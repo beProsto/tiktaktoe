@@ -73,9 +73,10 @@
 #acceptBody {
   --visible: inline-block;
   --invisible: none;
+  --font-family: "Comic Sans MS", "Comic Sans", cursive;
 
   background-image: linear-gradient(rgb(80, 180, 250), rgb(100, 220, 255));
-  font-family: "Comic Sans MS", "Comic Sans", cursive;
+  font-family: var(--font-family);
   font-size: 150%;
   padding: 10px;
   width: -moz-fit-content;
@@ -91,6 +92,10 @@
 }
 #acceptBody button {
   font-size: 100%;
+  font-family: var(--font-family);
+  border-radius: 10px;
+  border: 2px solid black;
+  background-image: linear-gradient(rgb(200, 200, 200), rgb(180, 180, 180));
 }
 
 

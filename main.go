@@ -150,7 +150,7 @@ func makeNewRoom(c *websocket.Conn) string {
   }
 }
 
-func connectPlayerToRoom(c *websocket.Conn, cd *ClientData, roomId string) {
+func connectPlayerToRoom(c *websocket.Conn, cd *ClientData, roomId string) bool {
   room, exists := Rooms.Load(roomId)
   if exists {
     // here we need client connection code
@@ -185,15 +185,18 @@ func connectPlayerToRoom(c *websocket.Conn, cd *ClientData, roomId string) {
       }
     }
 
+    return true
   } else {
     err := c.WriteMessage(1, []byte("#WRONG"))
     if err != nil {
       fmt.Println("write:", err)
     }
+
+    return false
   }
 }
 
-func game(w http.ResponseWriter, r *http.Request) {
+func game(w http.ResponseWriter, r *http.Request) { // when the player connects
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		fmt.Println("Upgrade: ", err)
@@ -208,7 +211,7 @@ func game(w http.ResponseWriter, r *http.Request) {
 	GameClientData.Store(c.RemoteAddr(), clientData)
 	GameClients.Store(c.RemoteAddr(), c)
 
-	for {
+	for { // infinite loop - for interpreting the player messages
 		_, message, err2 := c.ReadMessage() //ReadMessage blocks until message received
 		msgString := string(message)
 
@@ -233,6 +236,11 @@ func game(w http.ResponseWriter, r *http.Request) {
         // delete the client from client's list
         GameClientData.Delete(c.RemoteAddr())
         GameClients.Delete(c.RemoteAddr())
+
+        if(roomPtr.XMissing && roomPtr.OMissing && len(roomId) == 6) { // if both players disconnect, the room is deleted
+          Rooms.Delete(roomId)
+          return
+        }
 
         if(roomPtr.XAcceptedEnd && roomPtr.OAcceptedEnd) {
           roomPtr.XAcceptedEnd = false 
@@ -259,7 +267,9 @@ func game(w http.ResponseWriter, r *http.Request) {
       if(len(roomIdWanted) == 6) {
         roomId = roomIdWanted
         // here we need client connection code
-        connectPlayerToRoom(c, clientData, roomId)
+        if !connectPlayerToRoom(c, clientData, roomId) {
+          roomId = ""
+        }
       } else {
         fmt.Println("USER GAVE INVALID ROOM ID: ", c.RemoteAddr(), " ID: ", roomIdWanted)
       }
